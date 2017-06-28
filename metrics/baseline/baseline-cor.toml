@@ -1,0 +1,8 @@
+[[Metric]]
+# Fix this test name once we figure out the right one
+Name = "run-time-runc"
+Description = "some test or other"
+# Notionally this test does not have a minimum - smaller is better - but, if we
+# get an unexpectedly low number then I think we'd like to know!
+MinVal = 0.5
+MaxVal = 1.5
