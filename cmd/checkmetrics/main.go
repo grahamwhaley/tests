@@ -17,6 +17,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
 
 	"github.com/urfave/cli"
 )
@@ -36,11 +37,23 @@ const usage = name + ` checks CSV metrics results against a TOML baseline`
 var ciBasefile *Basefile
 
 func processMetrics(context *cli.Context) error {
+	var err error
 	fmt.Println("in processMetrics")
 
 	for _, m := range ciBasefile.Metric {
+		var thisCsv Csv
+
 		fmt.Printf("Processing %s\n", m.Name)
-		fmt.Println(m)
+		fullpath := path.Join(context.GlobalString("metricsdir"), m.Name)
+		fullpath = fullpath + ".csv"
+
+		fmt.Printf("Fullpath %s\n", fullpath)
+		err = thisCsv.load(fullpath)
+		if err != nil {
+			fmt.Println("Failed to open csv")
+			return err
+		}
+		fmt.Printf("Done %s\n", m.Name)
 	}
 
 	return nil
@@ -60,7 +73,7 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:  "metricdir",
+			Name:  "metricsdir",
 			Usage: "directory container CSV metrics",
 		},
 		cli.StringFlag{

@@ -14,19 +14,10 @@
 
 package main
 
-import (
-	"sync"
-)
-
 // Repo represents the repository under test
 type Metric struct {
 	Name        string
 	Description string
 	MinVal      float64
 	MaxVal      float64
-}
-
-func (m *Metric) loop(wg *sync.WaitGroup) {
-	wg.Done()
-	return
 }
