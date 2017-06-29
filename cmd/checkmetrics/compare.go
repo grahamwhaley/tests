@@ -30,7 +30,7 @@ type MetricsCheck struct {
 var TitleFormat string = "%4s: %20s: %7s < %7s < %7s: %5s: %7s: %7s %% "
 var LineFormat string = "%4s: %20s: %7.2f < %7.2f < %7.2f: %5d: %7.2f: %7.2f %% "
 
-func (mc MetricsCheck) ReportTitle() (string) {
+func (mc MetricsCheck) ReportTitle() string {
 	return fmt.Sprintf(TitleFormat,
 		"P/F",
 		"Name",
@@ -39,7 +39,7 @@ func (mc MetricsCheck) ReportTitle() (string) {
 		"Max",
 		"Iters",
 		"SD",
-		"CoV" )
+		"CoV")
 }
 
 func (mc *MetricsCheck) Check(m Metric, c Csv) (err error, summary string) {
@@ -47,7 +47,6 @@ func (mc *MetricsCheck) Check(m Metric, c Csv) (err error, summary string) {
 	var passtring string
 
 	log.Debugf("Compare check for [%s]", m.Name)
-
 
 	log.Debugf(" Check MinVal (%f > %f)", m.MinVal, c.Mean)
 	if c.Mean < m.MinVal {

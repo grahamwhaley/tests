@@ -26,16 +26,16 @@ import (
 
 // Repo represents the repository under test
 type Csv struct {
-	Name        string
-	Records     [][]string
-	ResultStrings []string		//Hold the array of all the Results as strings
-	Results     []float64		//Result array converted to floats
-	Iterations  int			//How many results did we gather
-	Mean        float64
-	MinVal      float64
-	MaxVal      float64
-	SD          float64		// Standard Deviation
-	CoV         float64		// Co-efficient of Variation
+	Name          string
+	Records       [][]string
+	ResultStrings []string  //Hold the array of all the Results as strings
+	Results       []float64 //Result array converted to floats
+	Iterations    int       //How many results did we gather
+	Mean          float64
+	MinVal        float64
+	MaxVal        float64
+	SD            float64 // Standard Deviation
+	CoV           float64 // Co-efficient of Variation
 }
 
 func (c *Csv) load(Name string) error {
@@ -59,15 +59,15 @@ func (c *Csv) load(Name string) error {
 
 	// Sanity check that the CSV file appears to have the correct columns
 	if c.Records[0][4] != "Result" {
-		log.Errorf("Error, 5th column is [%s], not [Result]", c.Records[0][4] )
+		log.Errorf("Error, 5th column is [%s], not [Result]", c.Records[0][4])
 		return errors.New("Error, 5th column is not [Result]")
 	}
-	
+
 	for _, r := range c.Records {
 		c.ResultStrings = append(c.ResultStrings, r[4])
 	}
 
-	c.MinVal = 1000		//Do we have a NAN, MAX  or infinity we can use here?
+	c.MinVal = 1000 //Do we have a NAN, MAX or infinity we can use here?
 	c.MaxVal = 0
 	var total float64
 	for _, r := range c.ResultStrings[1:] {

@@ -40,8 +40,8 @@ var ciBasefile *Basefile
 
 func processMetrics(context *cli.Context) error {
 	var err error
-	var finalerror error	// If we fail any metric, fail globally
-	var report []string	// summary report table
+	var finalerror error // If we fail any metric, fail globally
+	var report []string  // summary report table
 	var passes int
 	var fails int
 
@@ -63,7 +63,7 @@ func processMetrics(context *cli.Context) error {
 
 		// Now we have both the baseline and the CSV data loaded,
 		// let's go compare them
-		var  mc MetricsCheck
+		var mc MetricsCheck
 
 		err, summary := mc.Check(m, thisCsv)
 		if err != nil {
@@ -90,7 +90,7 @@ func processMetrics(context *cli.Context) error {
 	fmt.Println("\nReport Summary:")
 
 	var mc MetricsCheck
-	fmt.Println( mc.ReportTitle() )
+	fmt.Println(mc.ReportTitle())
 	for _, s := range report {
 		fmt.Println(s)
 	}
@@ -121,7 +121,7 @@ func main() {
 			Usage: "enable debug output in the log",
 		},
 		cli.StringFlag{
-			Name:  "log",
+			Name: "log",
 			//Value: "/dev/null",
 			Usage: "set the log file path",
 		},
