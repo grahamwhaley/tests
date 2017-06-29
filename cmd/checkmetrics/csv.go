@@ -17,9 +17,11 @@ package main
 import (
 	"encoding/csv"
 	"errors"
-	"fmt"
 	"os"
 	"strconv"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/montanaflynn/stats"
 )
 
 // Repo represents the repository under test
@@ -32,6 +34,8 @@ type Csv struct {
 	Mean        float64
 	MinVal      float64
 	MaxVal      float64
+	SD          float64		// Standard Deviation
+	CoV         float64		// Co-efficient of Variation
 }
 
 func (c *Csv) load(Name string) error {
@@ -39,11 +43,11 @@ func (c *Csv) load(Name string) error {
 	var f *os.File
 	var r *csv.Reader
 
-	fmt.Printf("in csv load of [%s]\n", Name)
+	log.Debugf("in csv load of [%s]", Name)
 
 	f, err = os.Open(Name)
 	if err != nil {
-		fmt.Println("Failed to open file")
+		log.Warnf("Failed to open csv file [%s]", Name)
 		return err
 	}
 
@@ -53,10 +57,9 @@ func (c *Csv) load(Name string) error {
 
 	c.Records, _ = r.ReadAll()
 
-	fmt.Printf(" First element is [%s]\n", c.Records[0][0] )
-
+	// Sanity check that the CSV file appears to have the correct columns
 	if c.Records[0][4] != "Result" {
-		fmt.Printf("Error, 5th column is [%s], not [Result]\n", c.Records[0][4] )
+		log.Errorf("Error, 5th column is [%s], not [Result]", c.Records[0][4] )
 		return errors.New("Error, 5th column is not [Result]")
 	}
 	
@@ -82,10 +85,14 @@ func (c *Csv) load(Name string) error {
 		}
 	}
 	c.Mean = total / float64(len(c.Records)-1)
+	c.SD, _ = stats.StandardDeviation(c.Results)
+	c.CoV = (c.SD / c.Mean) * 100.0
 
-	fmt.Printf(" Min is %f\n", c.MinVal)
-	fmt.Printf(" Max is %f\n", c.MaxVal)
-	fmt.Printf(" Mean is %f\n", c.Mean)
+	log.Debugf(" Min is %f", c.MinVal)
+	log.Debugf(" Max is %f", c.MaxVal)
+	log.Debugf(" Mean is %f", c.Mean)
+	log.Debugf(" SD is %f", c.SD)
+	log.Debugf(" CoV is %.2f", c.CoV)
 
 	return nil
 }

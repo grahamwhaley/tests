@@ -19,6 +19,7 @@ import (
 	"io/ioutil"
 
 	"github.com/BurntSushi/toml"
+	log "github.com/Sirupsen/logrus"
 )
 
 // Config represents the configuration file
@@ -30,6 +31,7 @@ type Basefile struct {
 // and returns it
 func NewBasefile(file string) (*Basefile, error) {
 	if file == "" {
+		log.Error("Missing basefile argument")
 		return nil, fmt.Errorf("missing baseline reference file")
 	}
 

@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/urfave/cli"
 )
 
@@ -41,20 +42,22 @@ func processMetrics(context *cli.Context) error {
 	var err error
 	var finalerror error	// If we fail any metric, fail globally
 	var report []string	// summary report table
+	var passes int
+	var fails int
 
-	fmt.Println("in processMetrics")
+	log.Debug("processMetrics")
 
 	for _, m := range ciBasefile.Metric {
 		var thisCsv Csv
 
-		fmt.Printf("Processing %s\n", m.Name)
+		log.Debugf("Processing %s", m.Name)
 		fullpath := path.Join(context.GlobalString("metricsdir"), m.Name)
 		fullpath = fullpath + ".csv"
 
-		fmt.Printf("Fullpath %s\n", fullpath)
+		log.Debugf("Fullpath %s", fullpath)
 		err = thisCsv.load(fullpath)
 		if err != nil {
-			fmt.Println("Failed to open csv")
+			log.Warnf("Failed to open csv [%s]", fullpath)
 			return err
 		}
 
@@ -64,27 +67,34 @@ func processMetrics(context *cli.Context) error {
 
 		err, summary := mc.Check(m, thisCsv)
 		if err != nil {
-			fmt.Printf("Check for [%s] failed\n", m.Name)
-			fmt.Printf(" with [%s]\n", summary)
+			log.Warnf("Check for [%s] failed", m.Name)
+			log.Warnf(" with [%s]", summary)
 			finalerror = errors.New("Fail")
+			fails += 1
 		} else {
-			fmt.Printf("Check for [%s] passed\n", m.Name)
-			fmt.Printf(" with [%s]\n", summary)
+			log.Debugf("Check for [%s] passed", m.Name)
+			log.Debugf(" with [%s]", summary)
+			passes += 1
 		}
 
 		report = append(report, summary)
 
-		fmt.Printf("Done %s\n", m.Name)
+		log.Debugf("Done %s", m.Name)
 	}
 
 	if finalerror != nil {
-		fmt.Println("Overall we failed")
+		log.Warn("Overall we failed")
 	}
 
-	fmt.Println("Report Summary:")
+	// Note - not logging here - the summary goes to stdout
+	fmt.Println("\nReport Summary:")
+
+	var mc MetricsCheck
+	fmt.Println( mc.ReportTitle() )
 	for _, s := range report {
 		fmt.Println(s)
 	}
+	fmt.Printf("Fails: %d, Passes %d\n", fails, passes)
 
 	return finalerror
 }
@@ -103,17 +113,38 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:  "metricsdir",
-			Usage: "directory container CSV metrics",
-		},
-		cli.StringFlag{
 			Name:  "basefile",
 			Usage: "path to baseline TOML metrics file",
+		},
+		cli.BoolFlag{
+			Name:  "debug",
+			Usage: "enable debug output in the log",
+		},
+		cli.StringFlag{
+			Name:  "log",
+			//Value: "/dev/null",
+			Usage: "set the log file path",
+		},
+		cli.StringFlag{
+			Name:  "metricsdir",
+			Usage: "directory container CSV metrics",
 		},
 	}
 
 	app.Before = func(context *cli.Context) error {
 		var err error
+
+		if path := context.GlobalString("log"); path != "" {
+			f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND|os.O_SYNC, 0640)
+			if err != nil {
+				return err
+			}
+			log.SetOutput(f)
+		}
+
+		if context.GlobalBool("debug") {
+			log.SetLevel(log.DebugLevel)
+		}
 
 		ciBasefile, err = NewBasefile(context.GlobalString("basefile"))
 		if err != nil {
@@ -124,10 +155,7 @@ func main() {
 	}
 
 	app.Action = func(context *cli.Context) error {
-		fmt.Println("in Action")
-		processMetrics(context)
-
-		return nil
+		return processMetrics(context)
 	}
 
 	if err := app.Run(os.Args); err != nil {
