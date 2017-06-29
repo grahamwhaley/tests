@@ -15,6 +15,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -38,6 +39,9 @@ var ciBasefile *Basefile
 
 func processMetrics(context *cli.Context) error {
 	var err error
+	var finalerror error	// If we fail any metric, fail globally
+	var report []string	// summary report table
+
 	fmt.Println("in processMetrics")
 
 	for _, m := range ciBasefile.Metric {
@@ -53,10 +57,36 @@ func processMetrics(context *cli.Context) error {
 			fmt.Println("Failed to open csv")
 			return err
 		}
+
+		// Now we have both the baseline and the CSV data loaded,
+		// let's go compare them
+		var  mc MetricsCheck
+
+		err, summary := mc.Check(m, thisCsv)
+		if err != nil {
+			fmt.Printf("Check for [%s] failed\n", m.Name)
+			fmt.Printf(" with [%s]\n", summary)
+			finalerror = errors.New("Fail")
+		} else {
+			fmt.Printf("Check for [%s] passed\n", m.Name)
+			fmt.Printf(" with [%s]\n", summary)
+		}
+
+		report = append(report, summary)
+
 		fmt.Printf("Done %s\n", m.Name)
 	}
 
-	return nil
+	if finalerror != nil {
+		fmt.Println("Overall we failed")
+	}
+
+	fmt.Println("Report Summary:")
+	for _, s := range report {
+		fmt.Println(s)
+	}
+
+	return finalerror
 }
 
 func main() {
