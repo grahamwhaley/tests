@@ -12,6 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/*
+Program checkmetrics compares the results from a set of Clear Containers
+metrics results, stored in CSV files, against a set of baseline metrics
+'expectations', defined in a TOML file.
+
+It returns non zero if any of the TOML metrics are not met.
+
+it prints out a tabluated report summary at the end of the run.
+*/
 package main
 
 import (
@@ -24,20 +33,18 @@ import (
 	"github.com/urfave/cli"
 )
 
-// version is the version of the program. It is specified at compilation time
-const version = ""
-
-// commit is the git commit of the program. It is specified at compilation time
-const commit = ""
-
 // name is the name of the program.
 const name = "checkmetrics"
 
 // usage is the usage of the program.
 const usage = name + ` checks CSV metrics results against a TOML baseline`
 
-var ciBasefile *Basefile
+// The TOML basefile
+var ciBasefile *baseFile
 
+// processMetrics locates the CSV file matching each entry in the TOML
+// baseline, loads and processes it, and checks if the metrics were in range.
+// Finally it generates a summary report
 func processMetrics(context *cli.Context) error {
 	var err error
 	var finalerror error // If we fail any metric, fail globally
@@ -47,8 +54,9 @@ func processMetrics(context *cli.Context) error {
 
 	log.Debug("processMetrics")
 
+	// Process each Metrics TOML entry one at a time
 	for _, m := range ciBasefile.Metric {
-		var thisCsv Csv
+		var thisCsv csvRecord
 
 		log.Debugf("Processing %s", m.Name)
 		fullpath := path.Join(context.GlobalString("metricsdir"), m.Name)
@@ -57,15 +65,19 @@ func processMetrics(context *cli.Context) error {
 		log.Debugf("Fullpath %s", fullpath)
 		err = thisCsv.load(fullpath)
 		if err != nil {
-			log.Warnf("Failed to open csv [%s]", fullpath)
-			return err
+			log.Warnf("Failed to read csv [%s]", fullpath)
+			// Record that this one did not complete successfully
+			finalerror = errors.New("Fail")
+			fails += 1
+			// Not a fatal error - continue to process any remaining files
+			continue
 		}
 
 		// Now we have both the baseline and the CSV data loaded,
 		// let's go compare them
-		var mc MetricsCheck
+		var mc metricsCheck
 
-		err, summary := mc.Check(m, thisCsv)
+		err, summary := mc.check(m, thisCsv)
 		if err != nil {
 			log.Warnf("Check for [%s] failed", m.Name)
 			log.Warnf(" with [%s]", summary)
@@ -86,11 +98,19 @@ func processMetrics(context *cli.Context) error {
 		log.Warn("Overall we failed")
 	}
 
-	// Note - not logging here - the summary goes to stdout
-	fmt.Println("\nReport Summary:")
+	fmt.Printf("\n")
 
-	var mc MetricsCheck
-	fmt.Println(mc.ReportTitle())
+	// We need to find a better way here to report that some tests failed to even
+	// get into the table - such as CSV file parse failures
+	if len(report) < fails+passes {
+		fmt.Printf("Warning: some tests (%d) failed to report\n", (fails+passes)-len(report))
+	}
+
+	// Note - not logging here - the summary goes to stdout
+	fmt.Println("Report Summary:")
+
+	var mc metricsCheck
+	fmt.Println(mc.reportTitle())
 	for _, s := range report {
 		fmt.Println(s)
 	}
@@ -99,17 +119,13 @@ func processMetrics(context *cli.Context) error {
 	return finalerror
 }
 
+// checkmetrics main entry point.
+// Do the command line processing, load the TOML file, and do the processing
+// against the CSV files
 func main() {
 	app := cli.NewApp()
 	app.Name = name
 	app.Usage = usage
-	app.Version = version
-
-	// Override the default function to display version details to
-	// ensure the "--version" option and "version" command are identical.
-	cli.VersionPrinter = func(c *cli.Context) {
-		fmt.Println(c.App.Version)
-	}
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -146,7 +162,7 @@ func main() {
 			log.SetLevel(log.DebugLevel)
 		}
 
-		ciBasefile, err = NewBasefile(context.GlobalString("basefile"))
+		ciBasefile, err = newBasefile(context.GlobalString("basefile"))
 		if err != nil {
 			return err
 		}

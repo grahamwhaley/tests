@@ -15,9 +15,12 @@
 package main
 
 // Repo represents the repository under test
-type Metric struct {
-	Name        string
-	Description string
-	MinVal      float64
-	MaxVal      float64
+// The members are Public so the toml reflection can see them, but I quite
+// like the lower case toml naming, hence we use the annotation strings to
+// get the parser to look for lower case.
+type metrics struct {
+	Name        string  `toml:"name"`
+	Description string  `toml:"description"`
+	MinVal      float64 `toml:"minval"`
+	MaxVal      float64 `toml:"maxval"`
 }

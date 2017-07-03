@@ -17,6 +17,7 @@ package main
 import (
 	"encoding/csv"
 	"errors"
+	"math"
 	"os"
 	"strconv"
 
@@ -24,30 +25,32 @@ import (
 	"github.com/montanaflynn/stats"
 )
 
-// Repo represents the repository under test
-type Csv struct {
+// csvRecord holds the data for a single 'test'. Some of the data is imported
+// from the CSV file, and other fields are then calculated from that data
+type csvRecord struct {
 	Name          string
 	Records       [][]string
-	ResultStrings []string  //Hold the array of all the Results as strings
-	Results       []float64 //Result array converted to floats
-	Iterations    int       //How many results did we gather
-	Mean          float64
-	MinVal        float64
-	MaxVal        float64
-	SD            float64 // Standard Deviation
-	CoV           float64 // Co-efficient of Variation
+	ResultStrings []string  // Hold the array of all the Results as strings
+	Results       []float64 // Result array converted to floats
+	Iterations    int       // How many results did we gather
+	Mean          float64   // The 'average'
+	MinVal        float64   // Smallest value we saw
+	MaxVal        float64   // Largest value we saw
+	SD            float64   // Standard Deviation
+	CoV           float64   // Co-efficient of Variation
 }
 
-func (c *Csv) load(Name string) error {
+// load reads in a CSV 'Metrics' results file from the file path given
+func (c *csvRecord) load(filepath string) error {
 	var err error
 	var f *os.File
 	var r *csv.Reader
 
-	log.Debugf("in csv load of [%s]", Name)
+	log.Debugf("in csv load of [%s]", filepath)
 
-	f, err = os.Open(Name)
+	f, err = os.Open(filepath)
 	if err != nil {
-		log.Warnf("Failed to open csv file [%s]", Name)
+		log.Warnf("Failed to open csv file [%s]", filepath)
 		return err
 	}
 
@@ -57,25 +60,44 @@ func (c *Csv) load(Name string) error {
 
 	c.Records, _ = r.ReadAll()
 
-	// Sanity check that the CSV file appears to have the correct columns
-	if c.Records[0][4] != "Result" {
-		log.Errorf("Error, 5th column is [%s], not [Result]", c.Records[0][4])
-		return errors.New("Error, 5th column is not [Result]")
+	// Check we have at least one header line and one value line
+	if len(c.Records) < 2 {
+		log.Errorf("File [%s] only has [%d] records, need at least 2, including header", filepath, len(c.Records))
+		return errors.New("Not enough records in file")
 	}
 
+	// Sanity check that the CSV file appears to have the Result column where
+	// we expect to find it
+	if c.Records[0][4] != "Result" {
+		log.Errorf("5th column is [%s], not [Result]", c.Records[0][4])
+		return errors.New("5th column is not [Result]")
+	}
+
+	// Build a slice containing just the 'Result' strings
 	for _, r := range c.Records {
 		c.ResultStrings = append(c.ResultStrings, r[4])
 	}
 
-	c.MinVal = 1000 //Do we have a NAN, MAX or infinity we can use here?
-	c.MaxVal = 0
+	// Set default min and max to infinates to ensure we pick up the values
+	// from the table. Alternatively, we could just set them to the values
+	// from the first entry in array.
+	c.MinVal = math.Inf(1)
+	c.MaxVal = math.Inf(-1)
 	var total float64
-	for _, r := range c.ResultStrings[1:] {
+	for recordno, r := range c.ResultStrings[1:] {
 		c.Iterations += 1
-		val, _ := strconv.ParseFloat(r, 64)
+
+		val, err := strconv.ParseFloat(r, 64)
+		if err != nil {
+			log.Errorf("Failed to conver float, file [%s] record [%d]", filepath, recordno)
+			return err
+		}
+
+		// Build a slice of float64 result values for us to work on
 		c.Results = append(c.Results, val)
 		total += val
 
+		// Remember the smallest and largest values we've seen in the data
 		if val > c.MaxVal {
 			c.MaxVal = val
 		}
@@ -84,8 +106,13 @@ func (c *Csv) load(Name string) error {
 			c.MinVal = val
 		}
 	}
-	c.Mean = total / float64(len(c.Records)-1)
+
+	// Calculate some basic statistics
+	c.Mean = total / float64(c.Iterations)
 	c.SD, _ = stats.StandardDeviation(c.Results)
+	// CoV is the Coefficient of Variation - an easier way to gauge the 'spread'
+	// of the data in the sample set
+	// We hold it as a 'percentage'
 	c.CoV = (c.SD / c.Mean) * 100.0
 
 	log.Debugf(" Min is %f", c.MinVal)

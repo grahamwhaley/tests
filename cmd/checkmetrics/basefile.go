@@ -22,14 +22,14 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
-// Config represents the configuration file
-type Basefile struct {
-	Metric []Metric
+// metric is the slice of Metrics imported from the TOML config file
+type baseFile struct {
+	Metric []metrics
 }
 
-// NewConfig load the configuration file in a Config object
-// and returns it
-func NewBasefile(file string) (*Basefile, error) {
+// newBasefile imports the TOML file passed from the path passed in the file
+// argument and returns the baseFile slice containing the import if successful
+func newBasefile(file string) (*baseFile, error) {
 	if file == "" {
 		log.Error("Missing basefile argument")
 		return nil, fmt.Errorf("missing baseline reference file")
@@ -40,9 +40,13 @@ func NewBasefile(file string) (*Basefile, error) {
 		return nil, err
 	}
 
-	var basefile Basefile
+	var basefile baseFile
 	if err := toml.Unmarshal(configuration, &basefile); err != nil {
 		return nil, err
+	}
+
+	if len(basefile.Metric) == 0 {
+		log.Warningf("No entries found in basefile [%s]\n", file)
 	}
 
 	return &basefile, nil

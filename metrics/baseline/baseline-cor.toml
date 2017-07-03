@@ -1,8 +1,8 @@
-[[Metric]]
+[[metric]]
 # Fix this test name once we figure out the right one
-Name = "docker-run-time"
-Description = "/bin/true cycle time"
+name = "docker-run-time"
+description = "/bin/true cycle time"
 # Notionally this test does not have a minimum - smaller is better - but, if we
 # get an unexpectedly low number then I think we'd like to know!
-MinVal = 0.5
-MaxVal = 1.5
+minval = 0.5
+maxval = 1.5
