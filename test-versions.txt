@@ -11,3 +11,8 @@ kernel_version="4.5-50"
 
 # Go version to use for building and testing Clear Containers
 go_version="1.8.3"
+
+# Default docker image used for tests and metrics, unless your test has a
+# specific need to use a different image (to get specific tools etc.)
+# Generally we keep this to be the smallest useful image we can find
+default_docker_image="busybox"

@@ -15,6 +15,9 @@
 # limitations under the License.
 
 SCRIPT_PATH=$(dirname $(readlink -f $0))
+
+source "${SCRIPT_PATH}/../../test-versions.txt"
+
 RESULT_DIR="${SCRIPT_PATH}/../results"
 LIB_DIR="${SCRIPT_PATH}/../lib"
 
