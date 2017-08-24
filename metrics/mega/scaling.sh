@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -x
+#set -x
 
 SCRIPT_PATH=$(dirname "$(readlink -f "$0")")
 source "${SCRIPT_PATH}/../lib/common.bash"
@@ -14,6 +14,11 @@ MEM_CUTOFF=(2*1024*1024*1024)
 # We generally choose busybox as it is 'small'
 DEFAULT_PAYLOAD="busybox"
 
+PAYLOADS=(busybox alpine nginx mysql)
+PAYLOAD_SLEEPS=(0 0 5 15)
+PAYLOAD_ARGS=("tail -f /dev/null" "tail -f /dev/null" "" "")
+EXTRA_ARGS=("" "" "" "-e MYSQL_ALLOW_EMPTY_PASSWORD=1")
+
 # The default command we run in the workload.
 # Ideally something benign that does not consume memory or CPU
 DEFAULT_COMMAND="tail -f /dev/null"
@@ -21,10 +26,10 @@ DEFAULT_COMMAND="tail -f /dev/null"
 # Which runtime do we fall to by default
 # We could just go with whatever the 'docker default' is, but better we
 # actually know, and then we can record that in the results
-DEFAULT_RUNTIME="runc"
-#DEFAULT_RUNTIME="cor"
+#DEFAULT_RUNTIME="runc"
+DEFAULT_RUNTIME="cor"
 
-DEFAULT_MAX_CONTAINERS=1000
+DEFAULT_MAX_CONTAINERS=100
 
 REQUIRED_COMMANDS="docker"
 
@@ -65,12 +70,13 @@ function count_containers() {
 function go() {
 	echo "Running..."
 
+	how_many=0
 	echo "number, available, time" > ${RESULTS_FILE}
 
 	while true; do {
 		check_all_running
 
-		how_long=$(/usr/bin/time -f "%e" docker run --runtime=${RUNTIME} -tid ${DEFAULT_PAYLOAD} ${DEFAULT_COMMAND} 2>&1 1>/dev/null)
+		how_long=$(/usr/bin/time -f "%e" docker run --runtime=${RUNTIME} -tid ${DOCKER_ARGS} ${DEFAULT_PAYLOAD} ${DEFAULT_COMMAND} 2>&1 1>/dev/null)
 		how_much=$(get_system_avail)
 
 		((how_many++))
@@ -104,19 +110,27 @@ function clean_up() {
 	kill_all_containers
 }
 
-function process_results() {
-	echo "Processing file ${1}"
+function run_packages() {
+	package_n=0
+	for package in ${PAYLOADS[@]}; do
+		args=${PAYLOAD_ARGS[$package_n]}
+		sleeps=${PAYLOAD_SLEEPS[$package_n]}
+		dockerargs=${EXTRA_ARGS[$package_n]}
 
-	./megaplot.R ${RESULTS_FILE}
+		echo "Run package $package, args ($args), sleep ($sleeps)"
+
+		PAYLOAD=$package
+		RESULTS_FILE="results-${RUNTIME}-${PAYLOAD}.csv"
+		LAUNCH_NAP=$sleeps
+		DOCKER_ARGS=$dockerargs
+		go
+		clean_up
+
+		((package_n++))
+	done
 }
 
-
 RUNTIME=${DEFAULT_RUNTIME}
-PAYLOAD=${DEFAULT_PAYLOAD}
-RESULTS_FILE="results-${RUNTIME}-${PAYLOAD}.csv"
-
 init
-go
-clean_up
+run_packages
 
-process_results ${RESULTS_FILE}
