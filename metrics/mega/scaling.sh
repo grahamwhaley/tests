@@ -14,10 +14,10 @@ MEM_CUTOFF=(2*1024*1024*1024)
 # We generally choose busybox as it is 'small'
 DEFAULT_PAYLOAD="busybox"
 
-PAYLOADS=(busybox alpine nginx mysql)
-PAYLOAD_SLEEPS=(0 0 5 15)
-PAYLOAD_ARGS=("tail -f /dev/null" "tail -f /dev/null" "" "")
-EXTRA_ARGS=("" "" "" "-e MYSQL_ALLOW_EMPTY_PASSWORD=1")
+PAYLOADS=(busybox alpine nginx mysql elasticsearch)
+PAYLOAD_SLEEPS=(0 0 5 15 15)
+PAYLOAD_ARGS=("tail -f /dev/null" "tail -f /dev/null" "" "" "")
+EXTRA_ARGS=("" "" "" "-e MYSQL_ALLOW_EMPTY_PASSWORD=1" "")
 
 # The default command we run in the workload.
 # Ideally something benign that does not consume memory or CPU
@@ -29,7 +29,7 @@ DEFAULT_COMMAND="tail -f /dev/null"
 #DEFAULT_RUNTIME="runc"
 DEFAULT_RUNTIME="cor"
 
-DEFAULT_MAX_CONTAINERS=100
+DEFAULT_MAX_CONTAINERS=10
 
 REQUIRED_COMMANDS="docker"
 
@@ -50,6 +50,11 @@ function init() {
 
 	kill_all_containers
 	check_cmds $REQUIRED_COMMANDS
+
+	echo "Pre-pulling images..."
+	for image in ${PAYLOADS[@]}; do
+		docker pull $image
+	done
 
 	how_many=0
 	
@@ -76,7 +81,8 @@ function go() {
 	while true; do {
 		check_all_running
 
-		how_long=$(/usr/bin/time -f "%e" docker run --runtime=${RUNTIME} -tid ${DOCKER_ARGS} ${DEFAULT_PAYLOAD} ${DEFAULT_COMMAND} 2>&1 1>/dev/null)
+		echo "Run $RUNTIME: $PAYLOAD: $COMMAND"
+		how_long=$(/usr/bin/time -f "%e" docker run --runtime=${RUNTIME} -tid ${DOCKER_ARGS} ${PAYLOAD} ${COMMAND} 2>&1 1>/dev/null)
 		how_much=$(get_system_avail)
 
 		((how_many++))
@@ -120,6 +126,7 @@ function run_packages() {
 		echo "Run package $package, args ($args), sleep ($sleeps)"
 
 		PAYLOAD=$package
+		COMMAND=$args
 		RESULTS_FILE="results-${RUNTIME}-${PAYLOAD}.csv"
 		LAUNCH_NAP=$sleeps
 		DOCKER_ARGS=$dockerargs
