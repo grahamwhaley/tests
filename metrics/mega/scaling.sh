@@ -27,7 +27,7 @@ DEFAULT_COMMAND="tail -f /dev/null"
 # We could just go with whatever the 'docker default' is, but better we
 # actually know, and then we can record that in the results
 #DEFAULT_RUNTIME="runc"
-DEFAULT_RUNTIME="cor"
+DEFAULT_RUNTIME="cc-runtime"
 
 DEFAULT_MAX_CONTAINERS=10
 
@@ -37,6 +37,58 @@ REQUIRED_COMMANDS="docker"
 # settle - such as containers starting up, or KSM settling down
 LAUNCH_NAP=0
 
+
+function check_all_running() {
+	how_many=$1
+	echo Checking ${how_many} containers are running
+
+	# check what docker thinks
+	how_many_running=$(count_containers)
+
+	if (( ${how_many_running} != ${how_many} )); then
+		echo "Wrong number of containers running (${how_many_running} != ${how_many} - stopping"
+		exit -1
+	fi
+
+	# check we have the right number of proxy's
+	# we should have 1 proxy running, iff we have >= 1 container running
+	how_many_proxys=$(ps --no-header -C cc-proxy | wc -l)
+	if (( ${how_many_running} >= 1 )); then
+		if (( ${how_many_proxys} != 1 )); then
+			# Need to check if the proxy is mean to quit if there are no containers running?
+			# Until then make this a non fatal warning
+			echo "Warning: Wrong number of proxys running (${how_many_running} containers, ${how_many_proxys} proxys)"
+		fi
+	else
+		if (( ${how_many_proxys} != 0 )); then
+			# Need to check if the proxy is mean to quit if there are no containers running?
+			# Until then make this a non fatal warning
+			echo "Warning: Wrong number of proxys running (${how_many_running} containers, ${how_many_proxys} proxys - stopping)"
+		fi
+	fi
+
+	# check we have the right number of shims
+	how_many_shims=$(ps --no-header -C cc-shim | wc -l)
+	# two shim processes per container...
+	if (( ${how_many_running}*2 != ${how_many_shims} )); then
+		echo "Wrong number of shims running (${how_many_running}*2 != ${how_many_shims} - stopping)"
+		exit -1
+	fi
+
+	# check we have the right number of qemu's
+	how_many_qemus=$(ps --no-header -C qemu-lite-system-x86_64 | wc -l)
+	if (( ${how_many_running} != ${how_many_qemus} )); then
+		echo "Wrong number of qemus running (${how_many_running} != ${how_many_qemus} - stopping)"
+		exit -1
+	fi
+
+	# check we have no runtimes running (they should be transient, we should not 'see them')
+	how_many_runtimes=$(ps --no-header -C cc-runtime | wc -l)
+	if (( ${how_many_runtimes} )); then
+		echo "Wrong number of runtimes running (${how_many_runtimes} - stopping)"
+		exit -1
+	fi
+}
 
 # somewhat harsh...
 function kill_all_containers() {
@@ -60,10 +112,6 @@ function init() {
 	
 }
 
-function check_all_running() {
-	echo Checking ${how_many} containers are running
-}
-
 function get_system_avail() {
 	echo $(free -b | head -2 | tail -1 | awk '{print $7}')
 }
@@ -79,7 +127,7 @@ function go() {
 	echo "number, available, time" > ${RESULTS_FILE}
 
 	while true; do {
-		check_all_running
+		check_all_running $how_many
 
 		echo "Run $RUNTIME: $PAYLOAD: $COMMAND"
 		how_long=$(/usr/bin/time -f "%e" docker run --runtime=${RUNTIME} -tid ${DOCKER_ARGS} ${PAYLOAD} ${COMMAND} 2>&1 1>/dev/null)
