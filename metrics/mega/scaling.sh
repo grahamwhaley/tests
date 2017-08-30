@@ -10,26 +10,17 @@ source "${SCRIPT_PATH}/../lib/common.bash"
 # We choose 2G, as that is one of the default VM sizes for CC
 MEM_CUTOFF=(2*1024*1024*1024)
 
-# The default container/workload we run for testing
-# We generally choose busybox as it is 'small'
-DEFAULT_PAYLOAD="busybox"
-
 PAYLOADS=(busybox alpine nginx mysql elasticsearch)
 PAYLOAD_SLEEPS=(0 0 5 15 15)
 PAYLOAD_ARGS=("tail -f /dev/null" "tail -f /dev/null" "" "" "")
 EXTRA_ARGS=("" "" "" "-e MYSQL_ALLOW_EMPTY_PASSWORD=1" "")
 
-# The default command we run in the workload.
-# Ideally something benign that does not consume memory or CPU
-DEFAULT_COMMAND="tail -f /dev/null"
-
 # Which runtime do we fall to by default
 # We could just go with whatever the 'docker default' is, but better we
 # actually know, and then we can record that in the results
-#DEFAULT_RUNTIME="runc"
 DEFAULT_RUNTIME="cc-runtime"
 
-DEFAULT_MAX_CONTAINERS=10
+DEFAULT_MAX_CONTAINERS=100
 
 REQUIRED_COMMANDS="docker"
 
@@ -37,6 +28,14 @@ REQUIRED_COMMANDS="docker"
 # settle - such as containers starting up, or KSM settling down
 LAUNCH_NAP=0
 
+function die() {
+	# right now we will fail many tests (like is qemu running) if we are not
+	# using a Clear Container runtime - as an interim bodge, don't quit in that
+	# case, just spew the warnings.
+	if [[ $DEFAULT_RUNTIME != "runc" ]]; then
+		exit -1
+	fi
+}
 
 function check_all_running() {
 	how_many=$1
@@ -47,6 +46,8 @@ function check_all_running() {
 
 	if (( ${how_many_running} != ${how_many} )); then
 		echo "Wrong number of containers running (${how_many_running} != ${how_many} - stopping"
+		# We hard exit here - no matter what runtime we should have the right number
+		# of containers running
 		exit -1
 	fi
 
@@ -72,29 +73,38 @@ function check_all_running() {
 	# two shim processes per container...
 	if (( ${how_many_running}*2 != ${how_many_shims} )); then
 		echo "Wrong number of shims running (${how_many_running}*2 != ${how_many_shims} - stopping)"
-		exit -1
+		die
 	fi
 
 	# check we have the right number of qemu's
 	how_many_qemus=$(ps --no-header -C qemu-lite-system-x86_64 | wc -l)
 	if (( ${how_many_running} != ${how_many_qemus} )); then
 		echo "Wrong number of qemus running (${how_many_running} != ${how_many_qemus} - stopping)"
-		exit -1
+		die
 	fi
 
 	# check we have no runtimes running (they should be transient, we should not 'see them')
 	how_many_runtimes=$(ps --no-header -C cc-runtime | wc -l)
 	if (( ${how_many_runtimes} )); then
 		echo "Wrong number of runtimes running (${how_many_runtimes} - stopping)"
-		exit -1
+		die
 	fi
 }
 
 # somewhat harsh...
 function kill_all_containers() {
-	#docker stop $(docker ps -qa)
-	#docker rm $(docker ps -qa)
-	docker rm -f $(docker ps -qa)
+	# two stage remove is 'safer' and nicer than a `rm -f`
+	# also see: https://github.com/clearcontainers/tests/issues/492
+	running=$(docker ps -q | wc -l)
+	if ((${running})); then
+		docker stop $(docker ps -qa)
+	fi
+
+	stopped=$(docker ps -qa | wc -l)
+	if ((${stopped})); then
+		docker rm $(docker ps -qa)
+	fi
+	#docker rm -f $(docker ps -qa)
 }
 
 # Checks and setup.
@@ -131,6 +141,9 @@ function go() {
 
 		echo "Run $RUNTIME: $PAYLOAD: $COMMAND"
 		how_long=$(/usr/bin/time -f "%e" docker run --runtime=${RUNTIME} -tid ${DOCKER_ARGS} ${PAYLOAD} ${COMMAND} 2>&1 1>/dev/null)
+
+		# Take the nap
+		sleep $LAUNCH_NAP
 		how_much=$(get_system_avail)
 
 		((how_many++))
