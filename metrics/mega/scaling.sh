@@ -10,15 +10,47 @@ source "${SCRIPT_PATH}/../lib/common.bash"
 # We choose 2G, as that is one of the default VM sizes for CC
 MEM_CUTOFF=(2*1024*1024*1024)
 
-PAYLOADS=(busybox alpine nginx mysql elasticsearch)
-PAYLOAD_SLEEPS=(0 0 5 15 15)
-PAYLOAD_ARGS=("tail -f /dev/null" "tail -f /dev/null" "" "" "")
-EXTRA_ARGS=("" "" "" "-e MYSQL_ALLOW_EMPTY_PASSWORD=1" "")
+# Set FORCE_KSM to have KSM enabled, configured to be aggressive, and triggered
+# after each container launch
+# This will get optimal memory page sharing, at the cost of CPU time
+FORCE_KSM=1
+
+KSM_BASE_DIR=/sys/kernel/mm/ksm
+KSM_ENABLE_FILE=${KSM_BASE_DIR}/run
+KSM_PAGES_FILE=${KSM_BASE_DIR}/pages_to_scan
+KSM_PAGES_TO_SCAN=100000
+KSM_SLEEP_FILE=${KSM_BASE_DIR}/sleep_millisecs
+KSM_PAGE_SCAN_TIME_MS=1
+
+#PAYLOADS=(busybox alpine nginx mysql elasticsearch)
+#PAYLOAD_SLEEPS=(0 0 5 15 15)
+#PAYLOAD_MEMORY=(64M 64M 2048M 512M 8192M)
+#PAYLOAD_ARGS=("tail -f /dev/null" "tail -f /dev/null" "" "" "")
+#EXTRA_ARGS=("" "" "" "-e MYSQL_ALLOW_EMPTY_PASSWORD=1" "")
+
+PAYLOADS=(elasticsearch)
+PAYLOAD_SLEEPS=(15)
+PAYLOAD_MEMORY=(8192M)
+PAYLOAD_ARGS=("")
+EXTRA_ARGS=("--cpus 1")
+
+#PAYLOADS=(mysql)
+#PAYLOAD_SLEEPS=(15)
+#PAYLOAD_MEMORY=(512M)
+#PAYLOAD_ARGS=("")
+#EXTRA_ARGS=("--cpus 1 -e MYSQL_ALLOW_EMPTY_PASSWORD=1")
+
+#PAYLOADS=(busybox)
+#PAYLOAD_SLEEPS=(1)
+#PAYLOAD_MEMORY=(64M)
+#PAYLOAD_ARGS=("tail -f /dev/null")
+#EXTRA_ARGS=("--cpus 1")
 
 # Which runtime do we fall to by default
 # We could just go with whatever the 'docker default' is, but better we
 # actually know, and then we can record that in the results
-DEFAULT_RUNTIME="cc-runtime"
+#DEFAULT_RUNTIME="cc-runtime"
+DEFAULT_RUNTIME="runc"
 
 DEFAULT_MAX_CONTAINERS=100
 
@@ -107,6 +139,46 @@ function kill_all_containers() {
 	#docker rm -f $(docker ps -qa)
 }
 
+# Turn on and configure KSM
+function enable_ksm() {
+	if [[ ! -f ${KSM_ENABLE_FILE} ]]; then
+		echo "Warning: no KSM to enable"
+		return
+	fi
+
+	echo "Enabling and configuring KSM"
+
+	# Set the pages to scan as a silly large number
+	sudo -E bash -c "echo ${KSM_PAGES_TO_SCAN} > ${KSM_PAGES_FILE}"
+
+	# And scan a lot....
+	sudo -E bash -c "echo ${KSM_PAGE_SCAN_TIME_MS} > ${KSM_SLEEP_FILE}"
+
+	# And turn on KSM
+	sudo -E bash -c "echo 1 > ${KSM_ENABLE_FILE}"
+
+}
+
+function disable_ksm() {
+	if [[ ! -f ${KSM_ENABLE_FILE} ]]; then
+		echo "Warning: no KSM to disable"
+		return
+	fi
+
+	echo "Disabling KSM"
+	# And turn off KSM
+	sudo -E bash -c "echo 0 > ${KSM_ENABLE_FILE}"
+
+}
+
+# Kick KSM to run
+# Note, it is not super clear from the docs or code that this does actually
+# do an instant fire, even if KSM is already enabled - but, we have an aggresive
+# timer period anyhow - let's try it
+function tickle_ksm() {
+	sudo -E bash -c "echo 1 > ${KSM_ENABLE_FILE}"
+}
+
 # Checks and setup.
 function init() {
 
@@ -119,6 +191,12 @@ function init() {
 	done
 
 	how_many=0
+
+	if [[ ${FORCE_KSM} ]]; then
+		enable_ksm
+	else
+		disable_ksm
+	fi
 	
 }
 
@@ -139,8 +217,13 @@ function go() {
 	while true; do {
 		check_all_running $how_many
 
-		echo "Run $RUNTIME: $PAYLOAD: $COMMAND"
-		how_long=$(/usr/bin/time -f "%e" docker run --runtime=${RUNTIME} -tid ${DOCKER_ARGS} ${PAYLOAD} ${COMMAND} 2>&1 1>/dev/null)
+		echo "Run $RUNTIME: -m $MEMORY $PAYLOAD: $COMMAND"
+		how_long=$(/usr/bin/time -f "%e" docker run --runtime=${RUNTIME} -tid ${DOCKER_ARGS} -m ${MEMORY} ${PAYLOAD} ${COMMAND} 2>&1 1>/dev/null)
+
+		# And fire KSM if needed before/whilst we nap
+		if [[ ${FORCE_KSM} ]]; then
+			tickle_ksm
+		fi
 
 		# Take the nap
 		sleep $LAUNCH_NAP
@@ -182,6 +265,7 @@ function run_packages() {
 	for package in ${PAYLOADS[@]}; do
 		args=${PAYLOAD_ARGS[$package_n]}
 		sleeps=${PAYLOAD_SLEEPS[$package_n]}
+		memory=${PAYLOAD_MEMORY[$package_n]}
 		dockerargs=${EXTRA_ARGS[$package_n]}
 
 		echo "Run package $package, args ($args), sleep ($sleeps)"
@@ -190,6 +274,7 @@ function run_packages() {
 		COMMAND=$args
 		RESULTS_FILE="results-${RUNTIME}-${PAYLOAD}.csv"
 		LAUNCH_NAP=$sleeps
+		MEMORY=$memory
 		DOCKER_ARGS=$dockerargs
 		go
 		clean_up
