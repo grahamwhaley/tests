@@ -38,6 +38,30 @@ for cmd in "${REPORT_CMDS[@]}"; do
 	fi
 done
 
+function timestamp_ns() {
+	local t
+	local s
+	local n
+	local ns
+
+	t="$(date +%-s:%-N)"
+	s=$(echo $t | awk -F ':' '{print $1}')
+	n=$(echo $t | awk -F ':' '{print $2}')
+	ns=$(( (s * 1000000000) + n ))
+
+	echo $ns
+}
+
+# If we have influx avail, then we are running under Jenkins with the
+# github PR plugin - post the PR details into the database as an annotation
+# tag
+if [[ $INFLUXDB_URL ]]; then
+	timestamp=$(timestamp_ns)
+	post_string="PR,repo=${ghprbGhRepository},PRId=${ghprbPullId} commit=\"${ghprbActualCommit}\" ${timestamp}"
+	echo "Posting to $INFLUXDB_URL : ${post_string}"
+	curl -i -XPOST $INFLUXDB_URL/write?db=$INFLUXDB_DB --data-binary "${post_string}"
+fi
+
 # Execute metrics scripts, save the results and report them
 # by email.
 pushd "$CURRENTDIR/../metrics"

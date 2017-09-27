@@ -220,9 +220,23 @@ function locate_container_kernel()
 	echo "$res"
 }
 
-function save_to_csv()
-{
+function timestamp_ns() {
+	local t
+	local s
+	local n
+	local ns
 
+	t="$(date +%s:%N)"
+	s=$(echo $t | awk -F ':' '{print $1}')
+	n=$(echo $t | awk -F ':' '{print $2}')
+	ns=$(( (s * 1000000000) + n ))
+
+	echo $ns
+}
+
+# Set up the generic things we need before storing the results
+function pre_save()
+{
 	if [ -z "$TEST_NAME" ];then
 		die "test name argument not supplied"
 	fi
@@ -269,7 +283,33 @@ function save_to_csv()
 	if [ -z "$ARGS" ];then
 		ARGS="none"
 	fi
+}
 
+function post_to_influx()
+{
+	echo "INFLUXDB_URL is [$INFLUXDB_URL]" >&2
+	echo "INFLUXDB_DB is [$INFLUXDB_DB]" >&2
+
+	# Generate the test tag name from the name we've been given
+	TEST_TAG=$(echo ${TEST_NAME} | sed 's/[ \/]/-/g')
+
+	# Nanoseconds since 1970 epoch for influxDB
+	# timestamp="$(date +%N)"
+	timestamp=$(timestamp_ns)
+
+	# A bit horrid - but quote the values in the CSV just in case one has an embedded comma
+	#s1=$(echo "\"$timestamp\",\"$GROUP\",\"$TEST_NAME\",\"$ARGS\",\"$RESULT\",\"$UNITS\",\"$SYSTEM\",\"$SYS_VERSION\",\"$platform\",\"$IMG\",\"$KERNEL\",\"$TAG\"")
+	#Note - skipped platform - not sure how to get that string into the db format yet!
+	s1=$(echo "$TEST_TAG,units=$UNITS,system=$SYSTEM,system_version=$SYS_VERSION,cc_image=$IMG,cc_kernel=$KERNEL,commit=$TAG value=$RESULT $timestamp")
+
+	echo "Posting $TEST_TAG value=$RESULT to influx $INFLUXDB_URL/write?db=$INFLUXDB_DB" >&2
+	curl -i -XPOST $INFLUXDB_URL/write?db=$INFLUXDB_DB --data-binary "${s1}"
+}
+
+# Save results to a csv file - named according to a number of parameters
+# of the test
+function save_to_csv()
+{
 	# Generate the file name from the test name - replace spaces and path chars
 	# to hyphens
 	CSV_FILE=${RESULT_DIR}/$(echo ${TEST_NAME} | sed 's/[ \/]/-/g').csv
@@ -294,6 +334,7 @@ function save_to_csv()
 	s1=$(echo "\"$timestamp\",\"$GROUP\",\"$TEST_NAME\",\"$ARGS\",\"$RESULT\",\"$UNITS\",\"$SYSTEM\",\"$SYS_VERSION\",\"$platform\",\"$IMG\",\"$KERNEL\",\"$TAG\"")
 
 	if [ -z "$SEND" ];then
+		echo "Saving $TEST_NAME to $CSV_FILE" >&2
 		echo "${s1}" >> "${CSV_FILE}"
 	else
 		echo "Would have done: echo ${s1} > ${CSV_FILE}"
@@ -388,6 +429,14 @@ function main()
 		die "Cannot locate system release file"
 	fi
 
+	pre_save
+
+	# If an InfluxDB destination is set, send the results there
+	if [[ $INFLUXDB_URL ]]; then
+		post_to_influx
+	fi
+
+	# and always place the results in the csv files as well
 	save_to_csv
 }
 
