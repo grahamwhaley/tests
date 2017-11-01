@@ -21,10 +21,45 @@ source "${CURRENTDIR}/../metrics/lib/common.bash"
 
 REPORT_CMDS=("checkmetrics" "emailreport")
 
-KSM_ENABLE_FILE="/sys/kernel/mm/ksm/run"
+KSM_ROOT="/sys/kernel/mm/ksm"
+KSM_ENABLE_FILE="${KSM_ROOT}/run"
+KSM_PAGES_FILE="${KSM_ROOT}/pages_to_scan"
+KSM_MILLI_FILE="${KSM_ROOT}/sleep_millisecs"
 GITHUB_URL="https://github.com"
 RESULTS_BACKUP_PATH="/var/local/localCI/backup"
 RESULTS_DIR="results"
+
+function ksm_footprint_test() {
+	local pages_to_scan
+	local sleep_milliseconds
+	# Remember initial settings
+	pages_to_scan=$(sudo cat ${KSM_PAGES_FILE})
+	sleep_milliseconds=$(sudo cat ${KSM_MILLI_FILE})
+
+	# Reconfigure to somewhat aggressive
+	# We run 20 containers of maybe 2Mb, which is 500 pages each
+	# That is 10,000 pages
+	# And we'd like to scan them all in <10s
+	# So, let's try 1000 pages/s - so 100 pages every 10ms might do it...
+		# Scan every 10 milliseconds
+	sudo bash -c "echo 10 > ${KSM_MILLI_FILE}"
+		# And scan 100 pages
+	sudo bash -c "echo 100 > ${KSM_PAGES_FILE}"
+
+	# Ensure KSM is enabled
+	sudo bash -c "echo 1 > ${KSM_ENABLE_FILE}"
+
+	# Run the memory footprint test.
+	# With the settings above, we should settle down KSM in <20s
+	bash -$- density/docker_memory_usage.sh 20 20
+
+	# And now ensure KSM is turned off for the rest of the tests
+	sudo bash -c "echo 0 > ${KSM_ENABLE_FILE}"
+
+	# And put back the defaults...
+	sudo bash -c "echo ${sleep_milliseconds} > ${KSM_MILLI_FILE}"
+	sudo bash -c "echo ${pages_to_scan} > ${KSM_PAGES_FILE}"
+}
 
 # Set up the initial state
 onetime_init
@@ -49,20 +84,7 @@ pushd "$CURRENTDIR/../metrics"
 	# and then turn it off for the rest of the tests, as KSM may introduce
 	# some extra noise in the results by stealing CPU time for instance
 	if [[ -f ${KSM_ENABLE_FILE} ]]; then
-		# Ensure KSM is enabled
-		sudo bash -c "echo 1 > ${KSM_ENABLE_FILE}"
-
-		# Note - here we could set some default settings for KSM,
-		# as on some distros KSM may either be set to rather passive
-		# which affects the chosen 'settle time' of the tests
-
-		# Run the memory footprint test. With default Ubuntu 16.04
-		# settings, and 20 containers, it takes ~200s to 'settle' to
-		# a steady memory footprint
-		bash -$- density/docker_memory_usage.sh 20 300
-
-		# And now ensure KSM is turned off for the rest of the tests
-		sudo bash -c "echo 0 > ${KSM_ENABLE_FILE}"
+		ksm_footprint_test
 	fi
 
 	# Run the time tests
