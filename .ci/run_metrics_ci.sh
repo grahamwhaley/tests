@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -x
+
 CURRENTDIR=$(dirname "$(readlink -f "$0")")
 source "${CURRENTDIR}/../metrics/lib/common.bash"
 
@@ -57,43 +59,43 @@ pushd "$CURRENTDIR/../metrics"
 		# Run the memory footprint test. With default Ubuntu 16.04
 		# settings, and 20 containers, it takes ~200s to 'settle' to
 		# a steady memory footprint
-		bash density/docker_memory_usage.sh 20 300
+		bash -$- density/docker_memory_usage.sh 20 300
 
 		# And now ensure KSM is turned off for the rest of the tests
 		sudo bash -c "echo 0 > ${KSM_ENABLE_FILE}"
 	fi
 
 	# Run the time tests
-	bash time/docker_workload_time.sh true busybox $RUNTIME 100
+	bash -$- time/docker_workload_time.sh true busybox $RUNTIME 100
 
 	# Run the memory footprint test
 	# As we have no KSM here, we do not need a 'settle delay'
-	bash density/docker_memory_usage.sh 20 1
+	bash -$- density/docker_memory_usage.sh 20 1
 
 	#
 	# Run some network tests
 	#
 
 	# ops/second
-	bash network/network-nginx-ab-benchmark.sh
+	bash -$- network/network-nginx-ab-benchmark.sh
 
 	# ping latency
-	bash network/network-latency.sh
+	bash -$- network/network-latency.sh
 
 	# Bandwidth and jitter
-	bash network/network-metrics-iperf3.sh
+	bash -$- network/network-metrics-iperf3.sh
 
 	# UDP bandwidths and packet loss
-	bash network/network-metrics-nuttcp.sh
+	bash -$- network/network-metrics-nuttcp.sh
 
 
 	#
 	# Run some IO tests
 	#
-	bash storage/fio_job.sh -b 16k -o randread -t "storage IO random read bs 16k"
-	bash storage/fio_job.sh -b 16k -o randwrite -t "storage IO random write bs 16k"
-	bash storage/fio_job.sh -b 16k -o read -t "storage IO linear read bs 16k"
-	bash storage/fio_job.sh -b 16k -o write -t "storage IO linear write bs 16k"
+	bash -$- storage/fio_job.sh -b 16k -o randread -t "storage IO random read bs 16k"
+	bash -$- storage/fio_job.sh -b 16k -o randwrite -t "storage IO random write bs 16k"
+	bash -$- storage/fio_job.sh -b 16k -o read -t "storage IO linear read bs 16k"
+	bash -$- storage/fio_job.sh -b 16k -o write -t "storage IO linear write bs 16k"
 
 	# Pull request URL
 	PR_URL="$GITHUB_URL/$LOCALCI_REPO_SLUG/pull/$LOCALCI_PR_NUMBER"
