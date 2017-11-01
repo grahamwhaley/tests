@@ -20,11 +20,12 @@ set -e
 cc_repo=$1
 
 tests_repo="github.com/clearcontainers/tests"
-mkdir -p ${HOME}/go
+
+export GOPATH=${WORKSPACE}/go
+mkdir -p ${GOPATH}
 
 # Export all environment variables needed.
 export GOROOT="/usr/local/go"
-export GOPATH=${HOME}/go
 export PATH=${GOPATH}/bin:/usr/local/go/bin:/usr/sbin:${PATH}
 export CI=true
 
