@@ -53,7 +53,13 @@ then
 fi
 
 .ci/setup.sh
-.ci/run.sh
+
+if [ -z "${METRICS_CI}" ]
+then
+	.ci/run.sh
+else
+	echo "Under METRICS_CI - skipping test run"
+fi
 
 # Publish the code coverage if needed.
 if [ ${COVERALLS_REPO_TOKEN} ]
