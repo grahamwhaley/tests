@@ -125,22 +125,31 @@ pushd "$CURRENTDIR/../metrics"
 	# Subject for emailreport tool about Pull Request
 	SUBJECT="[${LOCALCI_REPO_SLUG}] metrics report (#${LOCALCI_PR_NUMBER})"
 
-	# Parse/Report results
-	emailreport -c "Pull request: $PR_URL" -s "$SUBJECT"
+	# If we are running under LocalCI then do some housekeeping
+	if [ ${LOCALCI} ]; then
+		# Parse/Report results
+		emailreport -c "Pull request: $PR_URL" -s "$SUBJECT"
 
-	# Save the results directory in a backup path. The metrics tests will be
-	# executed each new pull request or when a Pull Request has been modified,
-	# then the results from the same Pull Request number will be identified
-	# by epoch point time as name of the direcory.
-	REPO="$(cut -d"/" -f2 <<<"$LOCALCI_REPO_SLUG")"
-	PR_BK_RESULTS="$RESULTS_BACKUP_PATH/$REPO/$LOCALCI_PR_NUMBER"
-	DEST="$PR_BK_RESULTS/$(date --iso-8601=seconds)"
+		# Save the results directory in a backup path. The metrics tests will be
+		# executed each new pull request or when a Pull Request has been modified,
+		# then the results from the same Pull Request number will be identified
+		# by epoch point time as name of the direcory.
+		REPO="$(cut -d"/" -f2 <<<"$LOCALCI_REPO_SLUG")"
+		PR_BK_RESULTS="$RESULTS_BACKUP_PATH/$REPO/$LOCALCI_PR_NUMBER"
+		DEST="$PR_BK_RESULTS/$(date --iso-8601=seconds)"
 
-	if [ ! -d "$PR_BK_RESULTS" ]; then
-		mkdir -p "$PR_BK_RESULTS"
+		if [ ! -d "$PR_BK_RESULTS" ]; then
+			mkdir -p "$PR_BK_RESULTS"
+		fi
+
+		mv "$RESULTS_DIR" "$DEST"
 	fi
 
-	mv "$RESULTS_DIR" "$DEST"
+	# If we are running under Jenkins then do the Jenkins specific
+	# tail end work
+	if [ ${JENKINS_HOME} ]; then
+		checkmetrics --basefile /etc/checkmetrics/checkmetrics.toml --metricsdir ${RESULTS_DIR}
+	fi
 
 
 popd
