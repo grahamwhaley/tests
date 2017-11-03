@@ -25,7 +25,7 @@ REPORT_CMDS=("checkmetrics" "emailreport")
 KSM_ENABLE_FILE="/sys/kernel/mm/ksm/run"
 GITHUB_URL="https://github.com"
 RESULTS_BACKUP_PATH="/var/local/localCI/backup"
-RESULTS_DIR="results"
+RESULTS_DIR="${CURRENTDIR}/../metrics/results"
 
 # Set up the initial state
 onetime_init
