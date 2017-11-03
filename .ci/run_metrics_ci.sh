@@ -17,6 +17,8 @@
 # Note - deliberately no 'set -e' in this file - if a test fails to run
 # then we want to continue to try and run the rest of the tests
 
+set -x
+
 CURRENTDIR=$(dirname "$(readlink -f "$0")")
 source "${CURRENTDIR}/../metrics/lib/common.bash"
 
@@ -26,6 +28,8 @@ KSM_ENABLE_FILE="/sys/kernel/mm/ksm/run"
 GITHUB_URL="https://github.com"
 RESULTS_BACKUP_PATH="/var/local/localCI/backup"
 RESULTS_DIR="${CURRENTDIR}/../metrics/results"
+
+echo "In run_metrics_ci.sh - flags are [$-]"
 
 # Set up the initial state
 onetime_init
