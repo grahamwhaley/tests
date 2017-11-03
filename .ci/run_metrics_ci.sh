@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Note - deliberately no 'set -e' in this file - if a test fails to run
+# then we want to continue to try and run the rest of the tests
+
 CURRENTDIR=$(dirname "$(readlink -f "$0")")
 source "${CURRENTDIR}/../metrics/lib/common.bash"
 
@@ -148,7 +151,14 @@ pushd "$CURRENTDIR/../metrics"
 	# If we are running under Jenkins then do the Jenkins specific
 	# tail end work
 	if [ ${JENKINS_HOME} ]; then
-		checkmetrics --basefile /etc/checkmetrics/checkmetrics.toml --metricsdir ${RESULTS_DIR}
+		# Note the baseline toml file is tied to the machine name
+		checkmetrics --basefile /etc/checkmetrics/checkmetrics-$(uname -n).toml --metricsdir ${RESULTS_DIR}
+		# Check if we failed the test!
+		cm_result=$?
+		if [ ${cm_result} != 0 ]; then
+			echo "checkmetrics FAILED (${cm_result})"
+			exit ${cm_result}
+		fi
 	fi
 
 
