@@ -245,14 +245,14 @@ function kill_processes_before_start() {
 	if [[ $result -ne 0 ]]; then
 		warning "Found unexpected ${HYPERVISOR_PATH} processes present"
 		pgrep -a -f "$HYPERVISOR_PATH"
-		sudo killall "$HYPERVISOR_PATH"
+		sudo killall "${HYPERVISOR_PATH##*/}"
 	fi
 
 	result=$(check_active_process "$CC_SHIM_PATH")
 	if [[ $result -ne 0 ]]; then
 		warning "Found unexpected ${CC_SHIM_PATH} processes present"
 		pgrep -a -f "$CC_SHIM_PATH"
-		sudo killall "$CC_SHIM_PATH"
+		sudo killall "${CC_SHIM_PATH##*/}"
 	fi
 }
 
