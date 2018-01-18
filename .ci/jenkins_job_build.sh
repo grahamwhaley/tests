@@ -16,6 +16,9 @@
 
 set -e
 
+# let's see what is going on
+set -x
+
 # Need the repo to know which tests to run.
 cc_repo=$1
 
