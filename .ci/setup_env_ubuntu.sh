@@ -16,10 +16,14 @@
 
 set -e
 
+set -x
+
 cidir=$(dirname "$0")
 source "/etc/os-release"
 source "${cidir}/lib.sh"
 get_cc_versions
+
+echo "cidir is [$cidir]"
 
 cc_image_path="/usr/share/clear-containers"
 

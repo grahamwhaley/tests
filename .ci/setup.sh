@@ -20,6 +20,8 @@
 
 set -e
 
+set -x
+
 cidir=$(dirname "$0")
 source /etc/os-release
 
