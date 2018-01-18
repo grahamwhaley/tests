@@ -34,16 +34,12 @@ EOT
 function download_kernel() {
 	local version=$1
 	local github_base="https://api.github.com/repos"
-	local latest_release_info_url="${github_base}/${repo_owner}/${repo_name}/releases/latest"
+	local latest_release_info_url="${cc_linux_releases_url}/latest"
 	[ -n "${version}" ] || die "version not provided"
 	if [ "${version}" == "latest" ]; then
-		release_json="$(curl -s ${latest_release_info_url})"
-		parse_py='
-import json,sys
-release=json.load(sys.stdin)
-print release["tag_name"]
-'
-		version=$(echo "${release_json}" | python -c "$parse_py")
+		redirect="$(curl -s ${latest_release_info_url})"
+		version=$(awk -F '/' '{print $8}' <<< $redirect)
+		version=${version%\"*}
 	fi
 	echo "version to install ${version}"
 	local binaries_dir="${version}-binaries"
