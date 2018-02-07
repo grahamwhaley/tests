@@ -23,6 +23,40 @@ SCRIPT_PATH=$(dirname "$(readlink -f "$0")")
 source "${SCRIPT_PATH}/../lib/common.bash"
 
 # This function will launch a container in detached mode and
+# it will return the container ID.
+# The role of this container is as a server.
+# Arguments:
+#  Docker image.
+#  Command[s] to be executed.
+#  Extra argument for container execution.
+function start_server_id()
+{
+	local image="$1"
+	local cmd="$2"
+	local extra_args="$3"
+
+	# Launch container
+	instance_id="$($DOCKER_EXE run $extra_args -d --runtime "$RUNTIME" \
+		"$image" sh -c "$cmd")"
+
+	echo "$instance_id"
+}
+
+# This function will return the IP address of a container, given the
+# container ID
+#  Container name
+function get_container_IP()
+{
+	local id="$1"
+
+	# Get IP Address
+	server_address=$($DOCKER_EXE inspect \
+		--format "{{.NetworkSettings.IPAddress}}" $id)
+
+	echo "$server_address"
+}
+
+# This function will launch a container in detached mode and
 # it will return the IP address, the role of this container is as a server.
 # Arguments:
 #  Docker image.
@@ -35,12 +69,10 @@ function start_server()
 	local extra_args="$3"
 
 	# Launch container
-	instance_id="$($DOCKER_EXE run $extra_args -d --runtime "$RUNTIME" \
-		"$image" sh -c "$cmd")"
+	instance_id="$(start_server_id "$1" "$2" "$3")"
 
 	# Get IP Address
-	server_address=$($DOCKER_EXE inspect \
-		--format "{{.NetworkSettings.IPAddress}}" $instance_id)
+	server_address=$(get_container_IP $instance_id)
 
 	echo "$server_address"
 }
@@ -61,6 +93,25 @@ function start_client()
 	# Execute client/workload and return result output
 	output="$($DOCKER_EXE run $extra_args --runtime "$RUNTIME" \
 			"$image" sh -c "$cmd")"
+
+	echo "$output"
+}
+
+# This function will exec a workload in an already created container.
+# The workload is received as an argument and this function will
+# return the output/result of the workload. The role of this container is as a client.
+# Arguments:
+#  container ID or name
+#  Command[s] to be executed
+#  Extra argument for container execution
+function exec_client()
+{
+	local container="$1"
+	local cmd="$2"
+	local extra_args="$3"
+
+	# Execute client/workload and return result output
+	output="$($DOCKER_EXE exec $extra_args "$container" sh -c "$cmd")"
 
 	echo "$output"
 }

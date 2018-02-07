@@ -46,6 +46,12 @@ fwd_port="${port}:${port}"
 image="gabyct/network"
 # Measurement time (seconds)
 transmit_timeout=5
+
+# How many times should we run each test.
+# Normally we will re-use the containers and re-run the
+# tests via a 'docker exec' where possible.
+iterations=1
+
 # Arguments to run the client/server
 # "privileged" argument enables access to all devices on
 # the host and it allows to avoid conflicts with AppArmor
@@ -55,7 +61,7 @@ if [ "$RUNTIME" == "runc" ]; then
 fi
 
 # Client/Server extra configuration
-client_extra_args="$extra_capability --rm"
+client_extra_args="$extra_capability"
 server_extra_args="$extra_capability"
 
 # Iperf server configuration
@@ -78,6 +84,7 @@ function iperf3_bandwidth() {
 	fi
 
 	local client_command="$init_cmds && iperf3 -c ${server_address} -t ${transmit_timeout}"
+	local client_extra_args="$client_extra_args --rm"
 	result=$(start_client "$image" "$client_command" "$client_extra_args")
 
 	local result_line=$(echo "$result" | grep -m1 -E '\breceiver\b')
@@ -105,6 +112,7 @@ function iperf3_jitter() {
 	fi
 
 	local client_command="$init_cmds && iperf3 -c ${server_address} -u -t ${transmit_timeout}"
+	local client_extra_args="$client_extra_args --rm"
 	result=$(start_client "$image" "$client_command" "$client_extra_args")
 
 	local result_line=$(echo "$result" | grep -m1 -A1 -E '\bJitter\b' | tail -1)
@@ -132,6 +140,7 @@ function iperf3_bidirectional_bandwidth_client_server() {
 	fi
 
 	local client_command="$init_cmds && iperf3 -c ${server_address} -d -t ${transmit_timeout}"
+	local client_extra_args="$client_extra_args --rm"
 	result=$(start_client "$image" "$client_command" "$client_extra_args")
 
 	local client_result=$(echo "$result" | grep -m1 -E '\breceiver\b')
@@ -293,25 +302,22 @@ function get_host_cnt_bwd() {
 	echo "$output"
 }
 
-# Run a UDP PPS test between two containers.
-# Use the smallest packets we can and run with unlimited bandwidth
-# mode to try and get as many packets through as possible.
-# Return the results in JSON format for portability.
-function get_cnt_cnt_pps() {
+# Start an iperf3 server in a container
+# Optional first argument gets passed on to the iperf3 server
+# Return the id of the container
+function start_iperf3_server() {
 	local cli_args="$1"
-
-	# Check we have the json query tool to parse the results
-	local cmds=("jq")
-	check_cmds "${cmds[@]}" 1>&2
 
 	# Initialize/clean environment
 	#  We need to do the stdout re-direct as we don't want any verbage in the
-	#  answer we return, as then it is not a valid JSON result...
+	#  answer we return
 	init_env 1>&2
 
 	# Make port forwarding
 	local server_extra_args="$server_extra_args -p $fwd_port"
-	local server_address=$(start_server "$image" "$server_command" "$server_extra_args")
+	local server_id=$(start_server_id "$image" "$server_command" "$server_extra_args")
+
+	server_address=$(get_container_IP $server_id)
 
 	# Verify server IP address
         if [ -z "$server_address" ];then
@@ -322,11 +328,23 @@ function get_cnt_cnt_pps() {
 	# Verify the iperf server is up
 	check_iperf_server 1>&2
 
-	# and start the client container
-	local client_command="$init_cmds && iperf3 -J -u -c ${server_address} -l 64 -b 0 ${cli_args} -t ${transmit_timeout}"
-	local output=$(start_client "$image" "$client_command" "$client_extra_args")
+	echo "$server_id"
+}
 
-	clean_env 1>&2
+# Run a UDP PPS test between two containers.
+# Use the smallest packets we can and run with unlimited bandwidth
+# mode to try and get as many packets through as possible.
+# Return the results in JSON format for portability.
+# arg1: the container id/name of the iperf3 client container
+# arg2: the IP address of the iperf3 server
+# arg3: any extra arguments for the iperf3 client
+function get_cnt_cnt_pps() {
+	local client_id="$1"
+	local server_ip="$2"
+	local cli_args="$3"
+
+	local client_command="$init_cmds && iperf3 -J -u -c ${server_ip} -l 64 -b 0 ${cli_args} -t ${transmit_timeout}"
+	local output=$(exec_client "$client_id" "$client_command" "$client_extra_args")
 
 	echo "$output"
 }
@@ -403,8 +421,24 @@ function iperf_multiqueue() {
 # to obtain the result.
 function iperf3_cnt_cnt_pps() {
 	local test_name="network pps cnt cnt"
-	local result="$(get_cnt_cnt_pps)"
-	parse_iperf_pps "$test_name" "$result"
+
+	# Check we have the json query tool to parse the results
+	local cmds=("jq")
+	check_cmds "${cmds[@]}" 1>&2
+
+	local server_id="$(start_iperf3_server)"
+	local client_id=$(start_server_id "$image" "tail -f /dev/null")
+
+	local server_ip=$(get_container_IP $server_id)
+
+	local i
+	for ((i=1; i<=$iterations;i++)); do
+		local result="$(get_cnt_cnt_pps $client_id $server_ip)"
+		parse_iperf_pps "$test_name" "$result"
+	done
+
+	$DOCKER_EXE stop $server_id $client_id
+	$DOCKER_EXE rm $server_id $client_id
 }
 
 # This test measures the packet-per-second (PPS) between the host and a container.
@@ -450,7 +484,7 @@ EOF
 
 function main {
 	local OPTIND
-	while getopts ":abhjpP" opt
+	while getopts ":abhi:jpP" opt
 	do
 		case "$opt" in
 		a)
@@ -466,6 +500,9 @@ function main {
 			help
 			exit 0;
                 	;;
+		i)
+			iterations="$OPTARG"
+			;;
 		j)
 			test_jitter="1"
 			;;
@@ -506,8 +543,8 @@ function main {
 		remote_network_parallel_iperf3
 	elif [ "$test_pps" == "1" ]; then
 		iperf3_cnt_cnt_pps
-		iperf3_host_cnt_pps
-		iperf3_host_cnt_pps_rev
+#		iperf3_host_cnt_pps
+#		iperf3_host_cnt_pps_rev
 	else
 		exit 0
 	fi
