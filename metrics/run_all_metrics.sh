@@ -72,7 +72,7 @@ function run_network_tests() {
 	bash ${SCRIPT_PATH}/network/network-latency.sh
 	bash ${SCRIPT_PATH}/network/network-latency-qperf.sh
 	bash ${SCRIPT_PATH}/network/network-metrics-cpu-consumption.sh
-	bash ${SCRIPT_PATH}/network/network-metrics-iperf3.sh
+	bash ${SCRIPT_PATH}/network/network-metrics-iperf3.sh -a
 	bash ${SCRIPT_PATH}/network/network-metrics-memory-pss-1g.sh
 	bash ${SCRIPT_PATH}/network/network-metrics-memory-pss.sh
 	bash ${SCRIPT_PATH}/network/network-metrics-memory-rss-1g.sh

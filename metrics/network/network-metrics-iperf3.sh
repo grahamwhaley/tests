@@ -426,24 +426,91 @@ function iperf3_host_cnt_pps_rev() {
 	parse_iperf_pps "$test_name" "$result"
 }
 
-init_env
 
-check_images "$image"
 
-iperf3_bandwidth
 
-iperf3_jitter
+function help {
+echo "$(cat << EOF
+Usage: $0 "[options]"
+	Description:
+		This script will measure network bandwidth, jitter, latency and
+		parallel bandwidth with iperf3 tool.
 
-iperf_host_cnt_bwd
+	Options:
+		-a	Run all tests
+		-b	Run bandwidth tests
+		-h	Shows help
+		-i n    Number of test iterations to perform
+		-j	Run jitter tests
+		-p	Run parallel connectin tests
+		-P	Run PPS tests
+EOF
+)"
+}
 
-iperf_host_cnt_bwd_rev
+function main {
+	local OPTIND
+	while getopts ":abhjpP" opt
+	do
+		case "$opt" in
+		a)
+			test_bandwidth="1"
+			test_jitter="1"
+			test_parallel="1"
+			test_pps="1"
+			;;
+		b)
+			test_bandwidth="1"
+			;;
+		h)
+			help
+			exit 0;
+                	;;
+		j)
+			test_jitter="1"
+			;;
+		p)
+			test_parallel="1"
+			;;
+		P)
+			test_pps="1"
+			;;
+		\?)
+			echo "An invalid option has been entered: -$OPTARG";
+			help
+			exit 1;
+			;;
+		:)
+			echo "Missing argument for -$OPTARG";
+			help
+			exit 1;
+			;;
+		esac
+	done
+	shift $((OPTIND-1))
 
-iperf_multiqueue
+	[[ -z "$test_bandwidth" ]] && [[ -z "$test_jitter" ]] && [[ -z "$test_parallel" ]] && [[ -z "$test_pps" ]] && help && die "Must choose at least one test"
 
-iperf3_bidirectional_bandwidth_client_server
+	init_env
+	check_images "$image"
 
-iperf3_cnt_cnt_pps
+	if [ "$test_bandwidth" == "1" ]; then
+		iperf3_bandwidth
+		iperf_host_cnt_bwd
+		iperf_host_cnt_bwd_rev
+		iperf_multiqueue
+		iperf3_bidirectional_bandwidth_client_server
+	elif [ "$test_jitter" == "1" ]; then
+		iperf3_jitter
+	elif [ "$test_parallel" == "1" ]; then
+		remote_network_parallel_iperf3
+	elif [ "$test_pps" == "1" ]; then
+		iperf3_cnt_cnt_pps
+		iperf3_host_cnt_pps
+		iperf3_host_cnt_pps_rev
+	else
+		exit 0
+	fi
+}
 
-iperf3_host_cnt_pps
-
-iperf3_host_cnt_pps_rev
+main "$@"
